@@ -16,7 +16,7 @@ from sklearn.tree import DecisionTreeClassifier
 # Model Evaluations
 from sklearn.model_selection import train_test_split, cross_val_score, cross_validate
 from sklearn.model_selection import RandomizedSearchCV, GridSearchCV
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
 from sklearn.metrics import RocCurveDisplay
 
 
@@ -41,41 +41,32 @@ df.info()
 # Getting numerical and categorical variables
 def grab_col_names(dataframe, cat_th=10, car_th=20):
     """
-
-    Veri setindeki kategorik, numerik ve kategorik fakat kardinal değişkenlerin isimlerini verir.
-    Not: Kategorik değişkenlerin içerisine numerik görünümlü kategorik değişkenler de dahildir.
+    Identify and categorize columns in a DataFrame based on their data types and cardinality.
 
     Parameters
     ------
-        dataframe: dataframe
-                Değişken isimleri alınmak istenilen dataframe
-        cat_th: int, optional
-                numerik fakat kategorik olan değişkenler için sınıf eşik değeri
-        car_th: int, optinal
-                kategorik fakat kardinal değişkenler için sınıf eşik değeri
+        dataframe : pd.DataFrame
+            The input DataFrame.
+        cat_th : int, optional
+            Numerical threshold for considering a numerical variable as categorical. Default is 10.
+        car_th : int, optional
+            Categorical threshold for considering a categorical variable as cardinal. Default is 20.
 
     Returns
     ------
-        cat_cols: list
-                Kategorik değişken listesi
-        num_cols: list
-                Numerik değişken listesi
-        cat_but_car: list
-                Kategorik görünümlü kardinal değişken listesi
+        cat_cols : list
+            List of categorical variables.
+        num_cols : list
+            List of numerical variables.
+        cat_but_car : list
+            List of categorical variables with cardinality exceeding 'car_th'.
+        num_but_cat : list
+            List of numerical variables with cardinality below 'cat_th'.
 
     Examples
     ------
-        import seaborn as sns
-        df = sns.load_dataset("iris")
-        print(grab_col_names(df))
-
-
-    Notes
-    ------
-        cat_cols + num_cols + cat_but_car = toplam değişken sayısı
-        num_but_cat cat_cols'un içerisinde.
-        Return olan 3 liste toplamı toplam değişken sayısına eşittir: cat_cols + num_cols + cat_but_car = değişken sayısı
-
+        # Example: Categorize and display column information for a DataFrame
+        cat_cols, num_cols, cat_but_car, num_but_cat = grab_col_names(df, cat_th=8, car_th=15)
     """
 
     # cat_cols, cat_but_car
@@ -103,10 +94,10 @@ def grab_col_names(dataframe, cat_th=10, car_th=20):
     print(f"num_cols: {len(num_cols)}")
     print(f"cat_but_car: {len(cat_but_car)}")
     print(f"num_but_cat: {len(num_but_cat)}")
-    return cat_cols, num_cols, cat_but_car
+    return cat_cols, num_cols, cat_but_car, num_but_cat
 
 
-cat_cols, num_cols, cat_but_car = grab_col_names(df)
+cat_cols, num_cols, cat_but_car, num_but_cat = grab_col_names(df)
 df.head()
 cat_cols
 
@@ -119,18 +110,49 @@ df.info()
 
 
 def cat_summary(dataframe, col_name, plot=False):
+    """
+    Display a summary for a categorical column in a DataFrame, including value counts and ratios.
+
+    Parameters
+    ------
+        dataframe : pd.DataFrame
+            The input DataFrame.
+        col_name : str
+            The name of the categorical column for which the summary is generated.
+        plot : bool, optional
+            Whether to plot a countplot for the categorical column. Default is False.
+
+    Returns
+    ------
+        None
+
+    Prints a DataFrame with value counts and ratios for each category in the specified categorical column.
+    If 'plot' is True, also displays a countplot for the categorical column.
+
+    Examples
+    ------
+        # Example 1: Display summary for a categorical column
+        cat_summary(df, 'categorical_column')
+
+        # Example 2: Display summary for multiple categorical columns
+        for col in cat_cols:
+            cat_summary(df, col)
+
+        # Example 3: Display summary and plot countplot for a categorical column
+        cat_summary(df, 'categorical_column', plot=True)
+    """
     print(
         pd.DataFrame(
             {
-                col_name: dataframe[col_name].value_counts(),
+                f"{col_name}_Count": dataframe[col_name].value_counts(),
                 "Ratio": 100 * dataframe[col_name].value_counts() / len(dataframe),
             }
         )
     )
-    print("#####################################")
+    print("##########################################")
     if plot:
         sns.countplot(x=dataframe[col_name], data=dataframe)
-        plt.show()
+        plt.show(block=True)
 
 
 for col in cat_cols:
@@ -143,6 +165,33 @@ for col in cat_cols:
 
 # Outliers
 def outlier_thresholds(dataframe, col_name, q1=0.10, q3=0.90):
+    """
+    Calculate the lower and upper bounds for identifying outliers in a numerical column.
+
+    Parameters
+    ------
+        dataframe : pd.DataFrame
+            The input DataFrame.
+        col_name : str
+            The name of the numerical column for which outlier thresholds will be calculated.
+        q1 : float, optional
+            The lower quartile value. Default is 0.10.
+        q3 : float, optional
+            The upper quartile value. Default is 0.90.
+
+    Returns
+    ------
+        low_limit : float
+            The lower threshold for identifying outliers.
+        up_limit : float
+            The upper threshold for identifying outliers.
+
+    Examples
+    ------
+        # Example: Calculate outlier thresholds for a numerical column
+        low_limit, up_limit = outlier_thresholds(df, 'numeric_column')
+    """
+
     quartile1 = dataframe[col_name].quantile(q1)
     quartile3 = dataframe[col_name].quantile(q3)
     interquantile_range = quartile3 - quartile1
@@ -151,13 +200,50 @@ def outlier_thresholds(dataframe, col_name, q1=0.10, q3=0.90):
     return low_limit, up_limit
 
 
-def check_outlier(dataframe, col_name):
-    low_limit, up_limit = outlier_thresholds(dataframe, col_name)
-    non_nan_values = dataframe[col_name].dropna()  # Exclude NaN values
-    if ((non_nan_values > up_limit) | (non_nan_values < low_limit)).any():
-        return True
+def check_outlier(dataframe, col_name, q1=0.10, q3=0.90):
+    """
+    Check for outliers in a numerical column of a DataFrame based on custom quantiles.
+
+    Parameters
+    ------
+        dataframe : pd.DataFrame
+            The input DataFrame.
+        col_name : str
+            The name of the numerical column to check for outliers.
+        q1 : float, optional
+            The lower quantile value for calculating the lower threshold. Default is 0.10.
+        q3 : float, optional
+            The upper quantile value for calculating the upper threshold. Default is 0.90.
+
+    Returns
+    ------
+        str
+            A string indicating the presence of outliers in the specified numerical column.
+
+    Examples
+    ------
+        # Example: Check for outliers in a numerical column with custom quantiles
+        result = check_outlier(df, 'numeric_column', q1=0.05, q3=0.95)
+        print(result)
+
+        # Example 2: Check for outliers for multiple numerical columns
+        for col in num_cols:
+            print(check_outlier(df, col))
+    """
+
+    low_limit, up_limit = outlier_thresholds(dataframe, col_name, q1, q3)
+    print(f"{col_name} Lower Limit: {low_limit}, {col_name} Upper Limit: {up_limit}")
+
+    outliers = dataframe[
+        (dataframe[col_name] > up_limit) | (dataframe[col_name] < low_limit)
+    ]
+
+    num_outliers = outliers.shape[0]  # Count the number of outliers
+
+    if num_outliers > 0:
+        return f"{col_name} : {num_outliers} : True"
     else:
-        return False
+        return f"{col_name} : {num_outliers} : False"
 
 
 for col in num_cols:
@@ -206,26 +292,27 @@ short_term = df["tenure"].quantile(0.33)
 mid_term = df["tenure"].quantile(0.66)
 
 df.loc[(df["tenure"] <= short_term), "TenureGroup"] = "Short_Term"
-df.loc[
-    (df["tenure"] > short_term) & (df["tenure"] <= mid_term), "TenureGroup"
-] = "Mid_Term"
+df.loc[(df["tenure"] > short_term) & (df["tenure"] <= mid_term), "TenureGroup"] = (
+    "Mid_Term"
+)
 df.loc[(df["tenure"] > mid_term), "TenureGroup"] = "Long_Term"
 
 
 # Grouping customers based on seniority and gender
-df.loc[
-    (df["gender"] == "Male") & (df["SeniorCitizen"] == 1), "AgeGenderGroup"
-] = "SeniorMale"
-df.loc[
-    (df["gender"] == "Female") & (df["SeniorCitizen"] == 1), "AgeGenderGroup"
-] = "SeniorFemale"
-df.loc[
-    (df["gender"] == "Male") & (df["SeniorCitizen"] == 0), "AgeGenderGroup"
-] = "YoungMale"
-df.loc[
-    (df["gender"] == "Female") & (df["SeniorCitizen"] == 0), "AgeGenderGroup"
-] = "YoungFemale"
+df.loc[(df["gender"] == "Male") & (df["SeniorCitizen"] == 1), "AgeGenderGroup"] = (
+    "SeniorMale"
+)
+df.loc[(df["gender"] == "Female") & (df["SeniorCitizen"] == 1), "AgeGenderGroup"] = (
+    "SeniorFemale"
+)
+df.loc[(df["gender"] == "Male") & (df["SeniorCitizen"] == 0), "AgeGenderGroup"] = (
+    "YoungMale"
+)
+df.loc[(df["gender"] == "Female") & (df["SeniorCitizen"] == 0), "AgeGenderGroup"] = (
+    "YoungFemale"
+)
 df["AgeGenderGroup"].value_counts()
+
 # Customers with both OnlineSecurity and OnlineBackup
 df["OnlineSecurityAndBackup"] = 0
 df.loc[
@@ -264,7 +351,7 @@ df.loc[
 train_df, test_df = train_test_split(df, test_size=0.2)
 
 # One-Hot Encoding
-cat_cols, num_cols, cat_but_car = grab_col_names(df)
+cat_cols, num_cols, cat_but_car, num_but_cat = grab_col_names(df)
 cat_cols = [col for col in cat_cols if col not in "Churn"]
 
 train_df = pd.get_dummies(train_df, columns=cat_cols, drop_first=True, dtype=int)
@@ -296,55 +383,100 @@ models = {
 }
 
 
-def fit_and_score(models, X_train, X_test, y_train, y_test):
+def evaluate_models(models, X_train, X_test, y_train, y_test, scoring="accuracy"):
     """
-    Fits and evaluates given machine learning models.
+    Evaluate a list of models using cross-validation and provide accuracy scores on a separate test set.
 
-    Parameters
-    ----------
-    models : dict
-        A dict of different Scikit-Learn machine learning models.
-    X_train : DataFrame
-        Training data (no labels)
-    X_test : DataFrame
-        Testing data (no labels)
-    y_train : Pandas Series
-        Training labels
-    y_test : Pandas Series
-        Test labels
+    Parameters:
+    - models: List of tuples containing (name, model_instance)
+    - X_train: Training feature matrix
+    - X_test: Test feature matrix
+    - y_train: Training target variable
+    - y_test: Test target variable
+    - scoring: Scoring metric for cross-validation
+
+    Returns:
+    - model_performance: Dictionary containing model names and their cross-validation scores
+    - test_scores: Dictionary containing model names and their accuracy scores on the test set
     """
 
-    # Make a dictionary to keep model scores.
-    model_scores = {}
+    print("Evaluating Base Models...", end="\n")
 
-    # Loop through models
+    # Make a dictionary to keep model scores
+    model_performance = {}
+    test_scores = {}
+
     for name, model in models.items():
-        # Fit the model to the data
+        # Cross-validation
+        cv_results = cross_validate(model, X_train, y_train, cv=3, scoring=scoring)
+        model_performance[name] = round(cv_results["test_score"].mean(), 4)
+
+        # Fit the model to the training data
         model.fit(X_train, y_train)
 
-        # Evaluate the model and append its scores to model_scores
-        model_scores[name] = model.score(X_test, y_test)
+        # Evaluate on the test set
+        y_pred = model.predict(X_test)
+        test_scores[name] = accuracy_score(y_test, y_pred)
 
-    return model_scores
+        # Print results
+        print(
+            f"{scoring}: {model_performance[name]} (CV) | Accuracy: {test_scores[name]} (Test) - {name}"
+        )
+
+    return model_performance, test_scores
 
 
 import time
 
-# df.isnull().sum()
 # start_time = time.time()
 
-model_scores = fit_and_score(
+model_perf, model_scores = evaluate_models(
     models=models, X_train=X_train, X_test=X_test, y_train=y_train, y_test=y_test
 )
 
 # end_time = time.time()
 # execution_time = end_time - start_time
 # print(f"Model training took {execution_time} seconds.")
-model_scores
+model_perf, model_scores
+# accuracy: 0.8033 (CV) | Accuracy: 0.8140525195173882 (Test) - Logistic Regression
+# accuracy: 0.7616 (CV) | Accuracy: 0.7757274662881476 (Test) - KNN
+# accuracy: 0.7838 (CV) | Accuracy: 0.7984386089425124 (Test) - Random Forest
+# accuracy: 0.6768 (CV) | Accuracy: 0.6863023420865862 (Test) - GaussianNB
+# accuracy: 0.7758 (CV) | Accuracy: 0.7955997161107168 (Test) - XGBoost
+# accuracy: 0.7199 (CV) | Accuracy: 0.7324343506032647 (Test) - DecisionTreeClassifier
 
 # Visualizing the model scores
 model_compare = pd.DataFrame(model_scores, index=["Accuracy"])
-model_compare.T.plot.bar()
+# model_compare.T.plot.bar()
+# plt.show()
+
+# Plotting with custom colors and styles
+colors = ["#FF5733", "#C70039", "#900C3F", "#581845", "#073B4C", "#004445"]
+
+# Setting dark background style
+plt.style.use("dark_background")
+
+# Plotting
+ax = model_compare.T.plot(kind="bar", legend=False)
+
+# Apply custom colors
+for i, bar in enumerate(ax.patches):
+    bar.set_color(colors[i % len(colors)])
+
+plt.title("Model Comparison", fontsize=16)
+plt.xlabel("Models", fontsize=14)
+plt.ylabel("Accuracy", fontsize=14)
+plt.xticks(rotation=0, ha="center", fontsize=12)
+plt.yticks(fontsize=12)
+
+# Adding data labels
+for i, val in enumerate(model_scores.values()):
+    plt.text(i, val + 0.01, f"{val:.2f}", ha="center", fontsize=10)
+
+# plt.tight_layout()
+
+# Saving and showing the plot
+# plt.savefig("model_comparison.png")
 plt.show()
 
 
@@ -367,7 +499,6 @@ neighbors = range(1, 51)
 knn = KNeighborsClassifier()
 knn.get_params()
 
-
 # Loop through different n_neighbors
 for i in neighbors:
     knn.set_params(n_neighbors=i)
@@ -384,27 +515,31 @@ for i in neighbors:
 train_scores
 test_scores
 
-plt.plot(neighbors, train_scores, label="Train score")
-plt.plot(neighbors, test_scores, label="Test score")
+plt.plot(neighbors, train_scores, label="Train score", color="#FF5733")  # Red color
+plt.plot(neighbors, test_scores, label="Test score", color="#C70039")  # Maroon color
 plt.xticks(np.arange(1, 51, 1))
-plt.xlabel("Number of neighbors")
-plt.ylabel("Model score")
+plt.xlabel("Number of neighbors", color="white")  # Setting x-axis label color to white
+plt.ylabel("Model score", color="white")  # Setting y-axis label color to white
 plt.legend()
+plt.title("KNN Hyperparameter Tuning", color="white")  # Setting title color to white
+
+# Saving and showing the plot
+# plt.savefig("knn_hyperparam.png", dpi=300)
 plt.show()
 
 print(f"Maximum KNN score on the test data: {max(test_scores) * 100:.2f}%")
-# After doing hyperparameter tuning on KNN the max result we got is %80.84 Accuracy.
+# After doing hyperparameter tuning on KNN the max result we got is %80.70 Accuracy.
 
 
 # Tuning KNN with gridSearch
 neighbors = {"n_neighbors": range(2, 50)}
 
-knn_gs_best = GridSearchCV(knn, neighbors, cv=10, n_jobs=-1, verbose=1).fit(
+knn_gs_best = GridSearchCV(knn, neighbors, cv=5, n_jobs=-1, verbose=1).fit(
     X_train, y_train
 )
 
 knn_gs_best.best_params_
-# Best n_neighbors parameter is 46
+# Best n_neighbors parameter is 29
 
 knn_final = knn.set_params(**knn_gs_best.best_params_).fit(X_train, y_train)
 
@@ -416,38 +551,31 @@ cv_results["test_accuracy"].mean()
 cv_results["test_f1"].mean()
 cv_results["test_roc_auc"].mean()
 
-# Accuracy: 0.81
+# Accuracy: 0.80
 # F1      : 0.58
-# Roc_Auc : 0.81
+# Roc_Auc : 0.82
 
 ######################################
 # Logistic Regression
 ######################################
 
-# Before tuning the accuracy of logres was: 0.82
-log_res = LogisticRegression(max_iter=150)
-# log_res.get_params()
-
+log_res = LogisticRegression(max_iter=500)
 log_reg_grid = {"C": np.logspace(-4, 4, 20), "solver": ["liblinear"]}
 
-
-rs_log_reg = RandomizedSearchCV(
+gs_log_reg = GridSearchCV(
     log_res,
-    param_distributions=log_reg_grid,
-    cv=10,
-    n_iter=20,
-    verbose=True,
+    log_reg_grid,
+    cv=5,
+    n_jobs=-1,
+    verbose=1,
 )
 
 # Fit random hyperparameter search model for Logisticregression
-rs_log_reg.fit(X_train, y_train)
-rs_log_reg.best_params_
-rs_log_reg.score(X_test, y_test)
+gs_log_reg.fit(X_train, y_train)
+gs_log_reg.best_params_
+gs_log_reg.score(X_test, y_test)
 
-final_log_res = log_res.set_params(**rs_log_reg.best_params_).fit(X_train, y_train)
-log_res_cv_results = cross_validate(
-    final_log_res, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
-)
+final_log_res = log_res.set_params(**gs_log_reg.best_params_).fit(X_train, y_train)
 log_res_cv_results = cross_validate(
     final_log_res, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
 )
@@ -455,38 +583,9 @@ log_res_cv_results = cross_validate(
 log_res_cv_results["test_accuracy"].mean()
 log_res_cv_results["test_f1"].mean()
 log_res_cv_results["test_roc_auc"].mean()
-
-# gs_log_reg = GridSearchCV(log_res, param_grid=log_reg_grid, cv=10, verbose=True)
-
-# # Fit grid hyperparameter search model
-# gs_log_reg.fit(X_train, y_train)
-
-# gs_log_reg.best_params_
-
-# # Evaluate the grid search Logistic Regression model
-# gs_log_reg.score(X_test, y_test)
-
-# gs_log_res_results = cross_validate(
-#     rs_log_reg, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
-# )
-
-# gs_log_res_results["test_accuracy"].mean()
-# gs_log_res_results["test_f1"].mean()
-# gs_log_res_results["test_roc_auc"].mean()
-
-# grid_final_log_res = log_res.set_params(**gs_log_reg.best_params_).fit(X_train, y_train)
-# grid_log_res_cv_results = cross_validate(
-#     grid_final_log_res, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
-# )
-
-# grid_log_res_cv_results["test_accuracy"].mean()
-# grid_log_res_cv_results["test_f1"].mean()
-# grid_log_res_cv_results["test_roc_auc"].mean()
-
-# RandomizedSearch and GridSearchCV almost identical
 # Accuracy: 0.81
-# F1      : 0.58
-# Roc_Auc : 0.84
+# F1      : 0.62
+# Roc_Auc : 0.85
 
 
 #########################################
@@ -502,11 +601,9 @@ rf_grid = {
     "min_samples_leaf": np.arange(1, 20, 2),
 }
 
-
 rs_rf = RandomizedSearchCV(
-    ran_fc, param_distributions=rf_grid, cv=10, n_iter=20, verbose=True
+    ran_fc, param_distributions=rf_grid, cv=10, n_iter=50, verbose=True
 )
-
 
 # Fit random hyperparameter search model for RandomForestClassifier()
 start_time = time.time()
@@ -531,9 +628,9 @@ rf_final.score(X_test, y_test)
 rf_cv = cross_validate(
     rf_final, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
 )
-rf_cv["test_accuracy"].mean()  # 0.81
-rf_cv["test_f1"].mean()  # 0.55
-rf_cv["test_roc_auc"].mean()  # 0.83
+rf_cv["test_accuracy"].mean()  # 0.80
+rf_cv["test_f1"].mean()  # 0.56
+rf_cv["test_roc_auc"].mean()  # 0.84
 
 
 #############################################
@@ -550,22 +647,24 @@ param_grid = {
     "colsample_bytree": [0.8, 0.9, 1.0],
 }
 
-xgb_grid_search = GridSearchCV(xgb, param_grid, cv=10, scoring="accuracy")
+xgb_random_search = RandomizedSearchCV(
+    xgb, param_grid, cv=10, n_iter=50, scoring="accuracy"
+)
 
 start_time = time.time()
 
-xgb_grid_search.fit(X_train, y_train)
+xgb_random_search.fit(X_train, y_train)
 
 end_time = time.time()
 execution_time = end_time - start_time
 print(f"Model training took {execution_time} seconds.")
 
-xgb_grid_search.best_params_
-xgb_grid_search.score(X_test, y_test)
+xgb_random_search.best_params_
+xgb_random_search.score(X_test, y_test)
 
 
 xgb_final = (
-    XGBClassifier().set_params(**xgb_grid_search.best_params_).fit(X_train, y_train)
+    XGBClassifier().set_params(**xgb_random_search.best_params_).fit(X_train, y_train)
 )
 
 # After hyperparameter tuning XGboost accuracy is 0.81
@@ -573,8 +672,8 @@ xgb_final = (
 xgb_cv = cross_validate(
     xgb_final, X_test, y_test, cv=10, scoring=["accuracy", "f1", "roc_auc"]
 )
-xgb_cv["test_accuracy"].mean()  # 0.81
-xgb_cv["test_f1"].mean()  # 0.54
+xgb_cv["test_accuracy"].mean()  # 0.80
+xgb_cv["test_f1"].mean()  # 0.57
 xgb_cv["test_roc_auc"].mean()  # 0.84
 
 #########################################
@@ -586,78 +685,108 @@ y_preds_rf = rf_final.predict(X_test)
 y_preds_xgb = xgb_final.predict(X_test)
 
 RocCurveDisplay.from_estimator(knn_final, X_test, y_test)
+plt.title("KNN Roc Curve", fontsize=16)
+plt.xlabel("True Positive Rate (Positive label: 1)", fontsize=14)
+plt.ylabel("False Positive Rate (Positive label: 1)", fontsize=14)
 plt.show()
 
 RocCurveDisplay.from_estimator(final_log_res, X_test, y_test)
+plt.title("Logistic Regression Roc Curve", fontsize=16)
+plt.xlabel("True Positive Rate (Positive label: 1)", fontsize=14)
+plt.ylabel("False Positive Rate (Positive label: 1)", fontsize=14)
 plt.show()
 
 RocCurveDisplay.from_estimator(rf_final, X_test, y_test)
+plt.title("Random Forest Roc Curve", fontsize=16)
+plt.xlabel("True Positive Rate (Positive label: 1)", fontsize=14)
+plt.ylabel("False Positive Rate (Positive label: 1)", fontsize=14)
 plt.show()
 
 RocCurveDisplay.from_estimator(xgb_final, X_test, y_test)
+plt.title("XGBoost Roc Curve", fontsize=16)
+plt.xlabel("True Positive Rate (Positive label: 1)", fontsize=14)
+plt.ylabel("False Positive Rate (Positive label: 1)", fontsize=14)
 plt.show()
 
 
-def plot_conf_mat(y_test, y_preds):
+def plot_confusion_matrix(y, y_pred, model_name):
     """
-    Plots a nice-looking confusion matrix using seaborn's heatmap.
+    Plot a confusion matrix for the predicted and true labels.
+
+    Parameters
+    ----------
+    y : array-like
+        True labels.
+    y_pred : array-like
+        Predicted labels.
+    model_name : str
+        Name of the model.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    # Example: Plot confusion matrix for true labels 'y_true' and predicted labels 'y_pred'
+    plot_confusion_matrix(y_true, y_pred, model_name="MyModel")
     """
-    plt.figure(figsize=(3, 3))
-    sns.heatmap(
-        confusion_matrix(y_test, y_preds),
-        annot=True,
-        cbar=False,
-        fmt="d",
-    )
-    plt.xlabel("Predicted label")
-    plt.ylabel("True label")
+
+    acc = round(accuracy_score(y, y_pred), 2)
+    cm = confusion_matrix(y, y_pred)
+    sns.heatmap(cm, annot=True, fmt=".0f")
+    plt.xlabel("Predicted label", fontsize=14)
+    plt.ylabel("True label", fontsize=14)
+    plt.title(f"{model_name} Accuracy Score: {acc}", fontsize=16)
     plt.show()
 
 
-plot_conf_mat(y_test, y_preds_knn)
-plot_conf_mat(y_test, y_preds_log_res)
-plot_conf_mat(y_test, y_preds_rf)
-plot_conf_mat(y_test, y_preds_xgb)
+plot_confusion_matrix(y_test, y_preds_knn, "KNN")
+plot_confusion_matrix(y_test, y_preds_log_res, "Logistic Regression")
+plot_confusion_matrix(y_test, y_preds_rf, "Random Forest")
+plot_confusion_matrix(y_test, y_preds_xgb, "XGBoost")
 
 
 # Classification report
 print(classification_report(y_test, y_preds_knn))
 #               precision    recall  f1-score   support
 
-#            0       0.86      0.89      0.87      1054
-#            1       0.63      0.56      0.59       355
+#            0       0.84      0.89      0.86      1030
+#            1       0.64      0.55      0.59       379
 
-#     accuracy                           0.81      1409
-#    macro avg       0.74      0.73      0.73      1409
-# weighted avg       0.80      0.81      0.80      1409
+#     accuracy                           0.80      1409
+#    macro avg       0.74      0.72      0.73      1409
+# weighted avg       0.79      0.80      0.79      1409
 
 print(classification_report(y_test, y_preds_log_res))
 #               precision    recall  f1-score   support
 
-#            0       0.86      0.90      0.88      1054
-#            1       0.65      0.57      0.61       355
+#            0       0.84      0.92      0.88      1030
+#            1       0.71      0.53      0.61       379
 
-#     accuracy                           0.81      1409
-#    macro avg       0.76      0.73      0.74      1409
-# weighted avg       0.81      0.81      0.81      1409
+#     accuracy                           0.82      1409
+#    macro avg       0.78      0.73      0.74      1409
+# weighted avg       0.81      0.82      0.81      1409
 
 print(classification_report(y_test, y_preds_rf))
 #               precision    recall  f1-score   support
 
-#            0       0.86      0.90      0.88      1054
-#            1       0.65      0.57      0.61       355
+#            0       0.83      0.93      0.88      1030
+#            1       0.72      0.50      0.59       379
 
 #     accuracy                           0.81      1409
-#    macro avg       0.76      0.73      0.74      1409
-# weighted avg       0.81      0.81      0.81      1409
+#    macro avg       0.78      0.71      0.73      1409
+# weighted avg       0.80      0.81      0.80      1409
 
 
 print(classification_report(y_test, y_preds_xgb))
-#            0       0.86      0.91      0.88      1054
-#            1       0.67      0.55      0.61       355
+#               precision    recall  f1-score   support
+
+#            0       0.84      0.93      0.88      1030
+#            1       0.74      0.52      0.61       379
 
 #     accuracy                           0.82      1409
-#    macro avg       0.77      0.73      0.74      1409
+#    macro avg       0.79      0.73      0.75      1409
 # weighted avg       0.81      0.82      0.81      1409
 
 
@@ -670,35 +799,83 @@ print(classification_report(y_test, y_preds_xgb))
 # Match coef's of features to columns
 feature_dict = dict(zip(df.columns, list(final_log_res.coef_[0])))
 
-# Visualize feature importance
+# Convert dictionary to DataFrame for easier manipulation
 feature_df = pd.DataFrame(feature_dict, index=[0])
-feature_df.T.plot.bar(title="Feature Importance", legend=False)
+
+# Sort features based on their coefficients
+feature_df = feature_df.T.sort_values(by=0, ascending=False)
+
+# Plotting
+plt.figure(figsize=(10, 6))
+colors = plt.cm.autumn(np.linspace(0, 1, len(feature_df)))  # Using a color palette
+plt.bar(feature_df.index, feature_df[0], color=colors, width=0.8)
+plt.title("Logistic Regression Feature Importance", fontsize=16)
+plt.xlabel("Features", fontsize=14)
+plt.ylabel("Coefficient", fontsize=14)
+plt.xticks(rotation=45, ha="right", fontsize=12)
+plt.yticks(fontsize=12)
+plt.tight_layout()
 plt.show()
 
 
 ##############################
 # RandomForest and XGBoost Feature Importance
 ##############################
+plt.style.use("default")
 
 
-def plot_features(columns, importances, n=20):
-    df = (
-        (pd.DataFrame({"features": columns, "feature_importances": importances}))
-        .sort_values("feature_importances", ascending=False)
-        .reset_index(drop=True)
+def plot_importance(model, features, num=None, save=False):
+    """
+    Plot feature importances of a model.
+
+    Parameters
+    ----------
+    model : object
+        The trained model with a `feature_importances_` attribute.
+    features : pd.DataFrame
+        The DataFrame containing the features used in the model.
+    num : int, optional
+        Number of top features to display. Default is the total number of features.
+    save : bool, optional
+        Whether to save the plot as "importances.png". Default is False.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    # Example: Plot feature importances for a RandomForestClassifier
+    plot_importance(rf_model, X_train, save=True)
+    """
+
+    if num is None:
+        num = len(features.columns)
+
+    feature_imp = pd.DataFrame(
+        {"Value": model.feature_importances_, "Feature": features.columns}
     )
 
-    # Plot the df we created
-    fig, ax = plt.subplots()
-    ax.barh(df["features"][:n], df["feature_importances"][:n])
-    ax.set_ylabel("Features")
-    ax.set_xlabel("Feature Importances")
-    ax.invert_yaxis()
+    # Sort feature importance values
+    feature_imp = feature_imp.sort_values(by="Value", ascending=False)[:num]
+
+    plt.figure(figsize=(10, 8))
+    sns.barplot(x="Value", y="Feature", data=feature_imp, palette="autumn")
+    plt.title("Feature Importances", fontsize=16)
+    plt.xlabel("Importance", fontsize=14)
+    plt.ylabel("Feature", fontsize=14)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.tight_layout()
+
+    if save:
+        plt.savefig("importances.png", dpi=300)
+
     plt.show()
 
 
-plot_features(X_train.columns, rf_final.feature_importances_)
-plot_features(X_train.columns, xgb_final.feature_importances_)
+plot_importance(rf_final, X_train)
+plot_importance(xgb_final, X_train)
 
 
 ##########################################
@@ -725,5 +902,20 @@ for name, model in models.items():
     }
 
 scores_df = pd.DataFrame(final_model_scores)
-scores_df.T.plot.bar()
+
+# Plotting
+plt.figure(figsize=(10, 6))
+sns.set_style("whitegrid")  # Set style
+colors = sns.color_palette("husl", len(scores_df))  # Choose color palette
+scores_df.T.plot(kind="bar", color=colors)
+
+# Add labels and title
+plt.title("Model Performance Comparison", fontsize=16)
+plt.xlabel("Metrics", fontsize=14)
+plt.ylabel("Scores", fontsize=14)
+plt.xticks(rotation=0, fontsize=12)
+plt.yticks(fontsize=12)
+plt.legend(title="Models", bbox_to_anchor=(1, 1), loc="upper left")
+
+plt.tight_layout()
 plt.show()
