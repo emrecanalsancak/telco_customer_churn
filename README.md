@@ -14,7 +14,19 @@ This project predicts customer churn for a telecommunications company using vari
 - `Tenure`: Number of months the customer has stayed with the company
 - `PhoneService`: Whether the customer has phone service (Yes/No)
 - `MultipleLines`: Whether the customer has multiple lines (Yes/No/No Phone Service)
-- ... (other variables)
+- `InternetService`: Customer's internet service provider (DSL, Fiber optic, No)
+- `OnlineSecurity`: Whether the customer has online security (Yes, No, No internet service)
+- `OnlineBackup`: Whether the customer has online backup (Yes, No, No internet service)
+- `DeviceProtection`: Whether the customer has device protection (Yes, No, No internet service)
+- `TechSupport`: Whether the customer has tech support (Yes, No, No internet service)
+- `StreamingTV`: Whether the customer has streaming TV (Yes, No, No internet service)
+- `StreamingMovies`: Whether the customer has streaming movies (Yes, No, No internet service)
+- `Contract`: The length of the customer's contract (Month-to-month, One year, Two years)
+- `PaperlessBilling`: Whether the customer has paperless billing (Yes, No)
+- `PaymentMethod`: The customer's payment method (Electronic check, Mailed check, Bank transfer (automatic), Credit card (automatic))
+- `MonthlyCharges`: The amount charged to the customer monthly
+- `TotalCharges`: The total amount charged to the customer
+- `Churn`: Whether the customer churned (Yes or No)
 
 ## Feature Engineering
 
