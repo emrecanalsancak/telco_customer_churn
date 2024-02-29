@@ -41,7 +41,7 @@ Utilized models such as Logistic Regression, K-Nearest Neighbors, Random Forest,
 - Split the data into training and testing sets.
 - Applied encoding and scaling to features.
 - Trained and evaluated models using accuracy, F1 score, and ROC AUC.
-- Tuned hyperparameters using Randomized Search (KNN and Random Forest) and Grid Search (Logistic Regression and XGBoost).
+- Tuned hyperparameters using Randomized and Grid Search.
 
 ## Final Model Comparison
 
