@@ -40,7 +40,7 @@ for objective in objectives:
 tab_home.subheader("Data and Variables")
 
 tab_home.warning(
-    "Since this is the company's private dataset, I cannot share the complete dataset. Only a subset of the data variables and their general meanings are provided below."
+    "Since this is the company's private dataset what I can share is limited, so it'll mostly consist of visualizations. Only a subset of the data variables and their general meanings are provided below."
 )
 
 tab_home.write(
